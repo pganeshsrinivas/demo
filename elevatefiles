@@ -1,0 +1,584 @@
+first copy the dc.yml and rc.yml files from the rancher/server
+and compare these with the rancher/server configurations
+and after that paste these files in the gitlab template and save them 
+after take these files which are pasted in gitlab and again paste them in the rancher/server machine terminal directory and 
+run the commands to deploy these images into the rancher client
+check the web page is displaying in the web or not
+
+
+
+
+ElevateApplyApac
+docker-compose.yml
+version: '2'
+services:
+  apply2:
+    image:  51.140.62.60:1301/sst_apache:demo_lfd_2.12_build_196.39
+    environment:
+      LANG: en
+      COUNTRY: AUD
+      CURRENCY: AU
+  uasadmin:
+    image: 51.140.62.60:1301/sst_uasadmin:demo_lfd_2.10_build_94
+    environment:
+      DB_LENDFAST: LendFast_ELEVATE_DevOps
+      DB_LENDFAST_PASSWORD: elevate
+      DB_LENDFAST_USER: elevate
+      JGROUPS_BIND_ADDR: uasadmin
+      LIQUIBASE_SCHEMA: uas-gwt.master.schema.changelog.xml
+    links:
+    - db:db
+    - solr:solr
+  lendfast:
+    image: 51.140.62.60:1301/sst_lendfast:demo_lfd_2.12_build_15922.43
+    environment:
+      DB_LENDFAST: LendFast_ELEVATE_DevOps
+      DB_LENDFAST_PASSWORD: elevate
+      DB_LENDFAST_USER: elevate
+      JGROUPS_BIND_ADDR: lendfast
+      LIQUIBASE_SCHEMA: lfe.demo.master.changelog.xml
+      RMI_SERVER_HOSTNAME: lendfast
+      HOST_ENDPOINT: http://51.140.115.204/TxSharedWebService/TXShared.svc
+      CDS_ENDPOINT: http://balancer/creditdecisionservicewar/services/decisionService/submitWait
+      LANG:  en
+      COUNTRY: AU
+      CURRENCY: AUD
+    links:
+    - solr:solr
+    - qas:qas
+ - lendfastfakehost:lendfastfakehost
+    - db:db
+  cds:
+    image:  51.140.62.60:1301/sst_cds:demo_lfd_2.10_build_230.15
+    environment:
+      DB_CDS: CDS_ELEVATE_DevOps
+      DB_CDS_PASSWORD: elevate
+      DB_CDS_USER: elevate
+      CDS_BUREAU_ENDPOINT: http://equifax-mock-service-devops.azure.com/consumerservice/EWSConsumerServiceMock
+      DB_LENDFAST: LendFast_ELEVATE_DevOps
+      DB_LENDFAST_PASSWORD: elevate
+      DB_LENDFAST_USER: elevate
+  qas:
+    image: rancher/external-service
+  balancer:
+    image: rancher/lb-service-haproxy:v0.5.9
+    expose:
+    - 80:80/tcp
+    labels:
+      io.rancher.container.agent.role: environmentAdmin
+      io.rancher.container.create_agent: 'true'
+  apply:
+    image: 51.140.62.60:1301/sst_sandstoneapply:demo_lfd_2.12_build_7059.36
+    environment:
+      DB_APPLY: SandstoneApply_ELEVATE_DevOps
+      DB_APPLY_PASSWORD:  elevate
+      DB_APPLY_USER: elevate
+      JGROUPS_BIND_ADDR: apply
+      JGROUPS_INITIAL_HOSTS: '"apply[44807]"'
+      OTHER_RMI_HOSTS: '"apply"'
+      RMI_SERVER_HOSTNAME: apply
+      CDS_ENDPOINT: http://balancer/creditdecisionservicewar/services/decisionService/submitWait
+      LANG: en
+ COUNTRY: GB
+      CURRENCY: GBP
+    stdin_open: true
+    tty: true
+    links:
+    - solr:solr
+    - db:db
+  csvfakehost:
+    image: 51.140.62.60:1301/sst_csvfakehost:demo_lfe_3.11.3_build_18.25
+    stdin_open: true
+    tty: true
+    labels:
+      io.rancher.container.pull_image: always
+  solr:
+    image: 51.140.62.60:1301/sst_solr:demo_lfd_2.10_build_2.0.4
+  lendfastfakehost:
+    image: 51.140.62.60:1301/sst_lendfastfakehost:demo_lfe_3.11.2_build_latest
+  db:
+    image: rancher/external-service
+ 
+rc.yml
+version: '2'
+services:
+  apply2:
+    scale: 1
+    start_on_create: true
+  uasadmin:
+    scale: 1
+    start_on_create: true
+  lendfast:
+    scale: 1
+    start_on_create: true
+  qas:
+    external_ips:
+    - 54.140.119.42
+    start_on_create: true
+  balancer:
+    scale: 1
+    start_on_create: true
+    lb_config:
+      certs: []
+      port_rules:
+      - path: /apply2
+        priority: 1
+        protocol: http
+        service: apply2
+        source_port: 80
+        target_port: 8080
+      - path: /apply
+        priority: 2
+        protocol: http
+        service: apply
+        source_port: 80
+        target_port: 8080
+      - path: /sandstone-apply-server
+        priority: 3
+        protocol: http
+ service: apply
+        source_port: 80
+        target_port: 8080
+      - path: /solr
+        priority: 4
+        protocol: http
+        service: solr
+        source_port: 80
+        target_port: 8080
+      - path: /elevate
+        priority: 5
+        protocol: http
+        service: apply2
+        source_port: 80
+        target_port: 8080
+      - path: /lendfast
+        priority: 6
+        protocol: http
+        service: lendfast
+        source_port: 80
+        target_port: 8080
+      - path: /creditdecisionservicewar
+        priority: 7
+        protocol: http
+        service: cds
+        source_port: 80
+        target_port: 8080
+      - path: /qualifier
+        priority: 8
+        protocol: http
+        service: apply2
+        source_port: 80
+        target_port: 8080
+ health_check:
+      healthy_threshold: 2
+      response_timeout: 2000
+      port: 42
+      unhealthy_threshold: 3
+      interval: 2000
+      strategy: recreate
+  apply:
+    scale: 1
+    start_on_create: true
+  csvfakehost:
+    scale: 1
+    start_on_create: true
+  solr:
+    scale: 1
+    start_on_create: true
+  lendfastfakehost:
+    scale: 1
+    start_on_create: true
+  db:
+    external_ips:
+    - 51.140.115.204
+    start_on_create: true
+
+
+ElevateBankfast
+dc.yml
+version: '2'
+services:
+  bankfast:
+    image: 51.140.62.60:1301/bankfast:1.11.7.d2
+    environment:
+      DB_HOST: 51.140.115.204
+      DB_NAME: BankFast_ELEVATE_DevOps
+      DB_PASSWORD: elevate
+      DB_USERNAME: elevate
+      HOST_ENDPOINT: http://51.140.115.204/TxSharedWebService/TXShared.svc
+    stdin_open: true
+    tty: true
+    command:
+    - /bin/sh
+    - -c
+    - /sst/scripts/start.sh
+    labels:
+      io.rancher.container.start_once: 'true'
+  apache:
+    image: 51.140.62.60:1301/bankfast_apache:1.3.14
+    stdin_open: true
+    tty: true
+  balancer:
+    image: rancher/lb-service-haproxy:v0.5.9
+    expose:
+    - 80:80/tcp
+    - 90:90/tcp
+    - 8080:8080/tcp
+    - 9080:9080/tcp
+    - 13588:13588/tcp
+    - 13500:13500/tcp
+    labels:
+      io.rancher.container.agent.role: environmentAdmin
+      io.rancher.container.create_agent: 'true'
+  bfsi:
+    image: 51.140.62.60:1301/bfsi:1.2.1
+command:
+    - /bin/sh
+    - -c
+    - /opt/sst/start.sh
+  liferay:
+    image: 51.140.62.60:1301/liferay:1.6.4
+    environment:
+      DB_HOST: 51.140.115.204
+      DB_NAME: Liferay_ELEVATE_DevOps
+      DB_PASSWORD: elevate
+      DB_USERNAME: elevate
+      SITE_ADDRESS: bankfast-devops.azure.com
+    links:
+    - db:db
+    command:
+    - /bin/sh
+    - -c
+    - /opt/sst/start.sh
+  liferay-admin:
+    image: 51.140.62.60:1301/liferay_admin:1.6.3
+    environment:
+      DB_HOST: 51.140.115.204
+      DB_NAME: Liferay_ELEVATE_DevOps
+      DB_PASSWORD: elevate
+      DB_USERNAME: elevate
+      SITE_ADDRESS: bankfast-devops.azure.com
+    links:
+    - db:db
+    command:
+    - /bin/sh
+    - -c
+    - /opt/sst/start.sh
+  rcas:
+ image: 51.140.62.60:1301/rcas:1.1.18
+    environment:
+      DB_HOST: 51.140.115.204
+      DB_RCAS: Rcas_ELEVATE_DevOps
+      DB_NAME: Rcas_ELEVATE_DevOps
+      DB_RCAS_PASSWORD:  elevate
+      DB_PASSWORD: elevate
+      DB_RCAS_USERNAME: elevate
+      DB_USERNAME: elevate
+      DB_URL: jdbc:jtds:sqlserver://51.140.115.204:1433;databaseName=Rcas_ELEVATE_DevOps
+      SITE_ADDRESS: bankfast-devops.azure.com
+    links:
+    - db:db
+    - bfsi:bfsi
+    - liferay:liferay
+  db:
+    image: rancher/external-service
+
+rc.yml
+version: '2'
+services:
+  bankfast:
+    scale: 1
+    start_on_create: true
+  apache:
+    scale: 1
+    start_on_create: true
+  balancer:
+    scale: 1
+    start_on_create: true
+    lb_config:
+      certs: []
+      port_rules:
+      - priority: 1
+        protocol: http
+        service: apache
+        source_port: 80
+        target_port: 80
+      - priority: 2
+        protocol: http
+        service: bfsi
+        source_port: 90
+        target_port: 55000
+      - priority: 3
+        protocol: http
+        service: liferay
+        source_port: 8080
+        target_port: 8080
+      - priority: 5
+        protocol: http
+        service: rcas
+        source_port: 9080
+        target_port: 9080
+      - priority: 6
+        protocol: http
+ service: bankfast
+        source_port: 13588
+        target_port: 13588
+      - priority: 7
+        protocol: http
+        service: bankfast
+        source_port: 13500
+        target_port: 13500
+    health_check:
+      healthy_threshold: 2
+      response_timeout: 2000
+      port: 42
+      unhealthy_threshold: 3
+      interval: 2000
+      strategy: recreate
+  bfsi:
+    scale: 1
+    start_on_create: true
+  liferay:
+    scale: 1
+    start_on_create: true
+  rcas:
+    scale: 1
+    start_on_create: true
+  liferay-admin:
+    scale: 1
+    start_on_create: true
+  db:
+    external_ips:
+    - 51.140.115.204
+    start_on_create: true
+
+Elevatepfm
+dc.yml
+version: '2'
+services:
+  simple-budget:
+    image: 51.140.62.60:1301/sst_pfm_simple_budget:1.4.0.6
+    environment:
+      DB_PFM_HOST: db
+      DB_PFM_NAME: PFM_ELEVATE
+      DB_PFM_PASSWORD: elevate
+      DB_PFM_USER: elevate
+    links:
+    - db:db
+  my-budget:
+    image: 51.140.62.60:1301/sst_pfm_my_budget:2.3.3.6
+    environment:
+      DB_PFM_HOST: db
+      DB_PFM_NAME: PFM_ELEVATE
+      DB_PFM_PASSWORD: elevate
+      DB_PFM_USER: elevate
+    links:
+    - db:db
+    - txn-analysis-engine:txn-analysis-engine
+  balancer:
+    image: rancher/lb-service-haproxy:v0.5.9
+    expose:
+    - 80:80/tcp
+    labels:
+      io.rancher.container.agent.role: environmentAdmin
+      io.rancher.container.create_agent: 'true'
+  admin-console:
+    image: 51.140.62.60:1301/pfm_admin_console:1.5.5.12
+    environment:
+      DB_PFM_HOST: db
+      DB_PFM_NAME: PFM_ELEVATE
+      DB_PFM_PASSWORD: elevate
+      DB_PFM_USER: elevate
+    links:
+- db:db
+    - txn-analysis-engine:txn-analysis-engine
+  db:
+    image: rancher/external-service
+  txn-analysis-engine:
+    image: 51.140.62.60:1301/sst_pfm_txn_analysis_engine:2.5.1.11
+    environment:
+      DB_PFM_HOST: db
+      DB_PFM_NAME: PFM_ELEVATE
+      DB_PFM_PASSWORD: elevate
+      DB_PFM_USER: elevate
+    links:
+    - db:db
+
+
+rc.yml
+version: '2'
+services:
+  simple-budget:
+    scale: 1
+    start_on_create: true
+  my-budget:
+    scale: 1
+    start_on_create: true
+  balancer:
+    scale: 1
+    start_on_create: true
+    lb_config:
+      certs: []
+      port_rules:
+      - path: /TxnAnalysisEngine
+        priority: 1
+        protocol: http
+        service: txn-analysis-engine
+        source_port: 80
+        target_port: 8080
+      - path: /MyBudget
+        priority: 2
+        protocol: http
+        service: my-budget
+        source_port: 80
+        target_port: 8080
+      - path: /SimpleBudgetApp
+        priority: 3
+        protocol: http
+        service: simple-budget
+        source_port: 80
+        target_port: 8080
+      - path: /AdminConsole
+        priority: 4
+        protocol: http
+        service: admin-console
+source_port: 80
+        target_port: 8080
+    health_check:
+      healthy_threshold: 2
+      response_timeout: 2000
+      port: 42
+      unhealthy_threshold: 3
+      interval: 2000
+      strategy: recreate
+  admin-console:
+    scale: 1
+    start_on_create: true
+  db:
+    external_ips:
+    - 51.140.xxx.yyy
+    start_on_create: true
+  txn-analysis-engine:
+    scale: 1
+    start_on_create: true
+
+Elevatemockservices
+dc.yml
+version: '2'
+services:
+  equifax-mock-service:
+    image: 51.140.62.60:1301/equifax-mock-service:soap-ui.sst_build-15
+    expose:
+    - 8080:8080/tcp
+
+rc.yml
+version: '2'
+services:
+  equifax-mock-service:
+    scale: 1
+    start_on_create: true
+
+
+ElevateGraylog
+dc.yml
+version: '2'
+services:
+  mongo:
+    image: mongo:3
+  elasticsearch:
+    image: elasticsearch:2
+    command:
+    - elasticsearch
+    - -Des.cluster.name=graylog
+  graylog:
+    image: graylog2/server:2.2.1-1
+    environment:
+      GRAYLOG_PASSWORD_SECRET: somepasswordpepper
+      GRAYLOG_ROOT_PASSWORD_SHA2: 8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918
+      GRAYLOG_WEB_ENDPOINT_URI: http://logging-devops.azure.com/api
+    ports:
+    - 9000:9000/tcp
+    - 5555:5555/tcp
+    - 12202:12202/tcp
+    - 5556:5556/udp
+
+rc.yml
+version: '2'
+services:
+  mongo:
+    scale: 1
+    start_on_create: true
+  elasticsearch:
+    scale: 1
+    start_on_create: true
+  graylog:
+    scale: 1
+    start_on_create: true
+
+
+elevateGlobalbalancer
+dc.yml
+version: '2'
+services:
+  GlobalBalancer:
+    image: rancher/lb-service-haproxy:v0.7.5
+    ports:
+    - 80:80/tcp
+    labels:
+      io.rancher.container.agent.role: environmentAdmin
+      io.rancher.container.create_agent: 'true'
+
+rc.yml
+version: '2'
+services:
+  GlobalBalancer:
+    scale: 1
+    start_on_create: true
+    lb_config:
+      certs: []
+      port_rules:
+      - hostname: pfm-devops.azure.com
+        path: ''
+        priority: 9
+        protocol: http
+        service: elevatepfm/balancer
+        source_port: 80
+        target_port: 80
+      - hostname: equifax-mock-service-devops.azure.com
+        path: ''
+        priority: 10
+        protocol: http
+        service: elevate-mockservices/equifax-mock-service
+        source_port: 80
+        target_port: 8080
+      - hostname: logging-devops.azure.com
+        path: ''
+        priority: 11
+        protocol: http
+        service: Graylog/graylog
+        source_port: 80
+        target_port: 9000
+      - hostname: apply-devops.azure.com
+        priority: 12
+        protocol: http
+        service: elevate-apply/balancer
+        source_port: 80
+        target_port: 80
+      - hostname: bankfast-devops.azure.com
+ priority: 13
+        protocol: http
+        service: elevate-bankfast/balancer
+        source_port: 80
+        target_port: 80
+    health_check:
+      healthy_threshold: 2
+      response_timeout: 2000
+      port: 42
+      unhealthy_threshold: 3
+      initializing_timeout: 60000
+      interval: 2000
+      reinitializing_timeout: 60000
+
+
+
+
